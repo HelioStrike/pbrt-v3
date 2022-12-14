@@ -30,9 +30,9 @@
 
  */
 
-
 // core/transform.cpp*
 #include "transform.h"
+
 #include "interaction.h"
 
 namespace pbrt {
@@ -236,16 +236,29 @@ Transform LookAt(const Point3f &pos, const Point3f &look, const Vector3f &up) {
 }
 
 Bounds3f Transform::operator()(const Bounds3f &b) const {
-    const Transform &M = *this;
-    Bounds3f ret(M(Point3f(b.pMin.x, b.pMin.y, b.pMin.z)));
-    ret = Union(ret, M(Point3f(b.pMax.x, b.pMin.y, b.pMin.z)));
-    ret = Union(ret, M(Point3f(b.pMin.x, b.pMax.y, b.pMin.z)));
-    ret = Union(ret, M(Point3f(b.pMin.x, b.pMin.y, b.pMax.z)));
-    ret = Union(ret, M(Point3f(b.pMin.x, b.pMax.y, b.pMax.z)));
-    ret = Union(ret, M(Point3f(b.pMax.x, b.pMax.y, b.pMin.z)));
-    ret = Union(ret, M(Point3f(b.pMax.x, b.pMin.y, b.pMax.z)));
-    ret = Union(ret, M(Point3f(b.pMax.x, b.pMax.y, b.pMax.z)));
-    return ret;
+    Point3f pMin = Point3f(
+        std::min(m.m[0][0] * b.pMin.x, m.m[0][0] * b.pMax.x) +
+            std::min(m.m[0][1] * b.pMin.y, m.m[0][1] * b.pMax.y) +
+            std::min(m.m[0][2] * b.pMin.z, m.m[0][2] * b.pMax.z) + m.m[0][3],
+        std::min(m.m[1][0] * b.pMin.x, m.m[1][0] * b.pMax.x) +
+            std::min(m.m[1][1] * b.pMin.y, m.m[1][1] * b.pMax.y) +
+            std::min(m.m[1][2] * b.pMin.z, m.m[1][2] * b.pMax.z) + m.m[1][3],
+        std::min(m.m[2][0] * b.pMin.x, m.m[2][0] * b.pMax.x) +
+            std::min(m.m[2][1] * b.pMin.y, m.m[2][1] * b.pMax.y) +
+            std::min(m.m[2][2] * b.pMin.z, m.m[2][2] * b.pMax.z) + m.m[2][3]);
+
+    Point3f pMax = Point3f(
+        std::max(m.m[0][0] * b.pMin.x, m.m[0][0] * b.pMax.x) +
+            std::max(m.m[0][1] * b.pMin.y, m.m[0][1] * b.pMax.y) +
+            std::max(m.m[0][2] * b.pMin.z, m.m[0][2] * b.pMax.z) + m.m[0][3],
+        std::max(m.m[1][0] * b.pMin.x, m.m[1][0] * b.pMax.x) +
+            std::max(m.m[1][1] * b.pMin.y, m.m[1][1] * b.pMax.y) +
+            std::max(m.m[1][2] * b.pMin.z, m.m[1][2] * b.pMax.z) + m.m[1][3],
+        std::max(m.m[2][0] * b.pMin.x, m.m[2][0] * b.pMax.x) +
+            std::max(m.m[2][1] * b.pMin.y, m.m[2][1] * b.pMax.y) +
+            std::max(m.m[2][2] * b.pMin.z, m.m[2][2] * b.pMax.z) + m.m[2][3]);
+
+    return Bounds3f(pMin, pMax);
 }
 
 Transform Transform::operator*(const Transform &t2) const {
@@ -402,8 +415,7 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
       startTime(startTime),
       endTime(endTime),
       actuallyAnimated(*startTransform != *endTransform) {
-    if (!actuallyAnimated)
-        return;
+    if (!actuallyAnimated) return;
     Decompose(startTransform->m, &T[0], &R[0], &S[0]);
     Decompose(endTransform->m, &T[1], &R[1], &S[1]);
     // Flip _R[1]_ if needed to select shortest path
@@ -543,32 +555,35 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
 
         c3[0] = DerivativeTerm(
             0.,
-            -2 * (q0x * qperpy * s010 - q0w * qperpz * s010 +
-                  q0w * qperpy * s020 + q0x * qperpz * s020 -
-                  q0x * qperpy * s110 + q0w * qperpz * s110 -
-                  q0w * qperpy * s120 - q0x * qperpz * s120 +
-                  q0y * (-2 * qperpy * s000 + qperpx * s010 + qperpw * s020 +
-                         2 * qperpy * s100 - qperpx * s110 - qperpw * s120) +
-                  q0z * (-2 * qperpz * s000 - qperpw * s010 + qperpx * s020 +
-                         2 * qperpz * s100 + qperpw * s110 - qperpx * s120)) *
+            -2 *
+                (q0x * qperpy * s010 - q0w * qperpz * s010 +
+                 q0w * qperpy * s020 + q0x * qperpz * s020 -
+                 q0x * qperpy * s110 + q0w * qperpz * s110 -
+                 q0w * qperpy * s120 - q0x * qperpz * s120 +
+                 q0y * (-2 * qperpy * s000 + qperpx * s010 + qperpw * s020 +
+                        2 * qperpy * s100 - qperpx * s110 - qperpw * s120) +
+                 q0z * (-2 * qperpz * s000 - qperpw * s010 + qperpx * s020 +
+                        2 * qperpz * s100 + qperpw * s110 - qperpx * s120)) *
                 theta,
-            -2 * (q0x * qperpy * s011 - q0w * qperpz * s011 +
-                  q0w * qperpy * s021 + q0x * qperpz * s021 -
-                  q0x * qperpy * s111 + q0w * qperpz * s111 -
-                  q0w * qperpy * s121 - q0x * qperpz * s121 +
-                  q0y * (-2 * qperpy * s001 + qperpx * s011 + qperpw * s021 +
-                         2 * qperpy * s101 - qperpx * s111 - qperpw * s121) +
-                  q0z * (-2 * qperpz * s001 - qperpw * s011 + qperpx * s021 +
-                         2 * qperpz * s101 + qperpw * s111 - qperpx * s121)) *
+            -2 *
+                (q0x * qperpy * s011 - q0w * qperpz * s011 +
+                 q0w * qperpy * s021 + q0x * qperpz * s021 -
+                 q0x * qperpy * s111 + q0w * qperpz * s111 -
+                 q0w * qperpy * s121 - q0x * qperpz * s121 +
+                 q0y * (-2 * qperpy * s001 + qperpx * s011 + qperpw * s021 +
+                        2 * qperpy * s101 - qperpx * s111 - qperpw * s121) +
+                 q0z * (-2 * qperpz * s001 - qperpw * s011 + qperpx * s021 +
+                        2 * qperpz * s101 + qperpw * s111 - qperpx * s121)) *
                 theta,
-            -2 * (q0x * qperpy * s012 - q0w * qperpz * s012 +
-                  q0w * qperpy * s022 + q0x * qperpz * s022 -
-                  q0x * qperpy * s112 + q0w * qperpz * s112 -
-                  q0w * qperpy * s122 - q0x * qperpz * s122 +
-                  q0y * (-2 * qperpy * s002 + qperpx * s012 + qperpw * s022 +
-                         2 * qperpy * s102 - qperpx * s112 - qperpw * s122) +
-                  q0z * (-2 * qperpz * s002 - qperpw * s012 + qperpx * s022 +
-                         2 * qperpz * s102 + qperpw * s112 - qperpx * s122)) *
+            -2 *
+                (q0x * qperpy * s012 - q0w * qperpz * s012 +
+                 q0w * qperpy * s022 + q0x * qperpz * s022 -
+                 q0x * qperpy * s112 + q0w * qperpz * s112 -
+                 q0w * qperpy * s122 - q0x * qperpz * s122 +
+                 q0y * (-2 * qperpy * s002 + qperpx * s012 + qperpw * s022 +
+                        2 * qperpy * s102 - qperpx * s112 - qperpw * s122) +
+                 q0z * (-2 * qperpz * s002 - qperpw * s012 + qperpx * s022 +
+                        2 * qperpz * s102 + qperpw * s112 - qperpx * s122)) *
                 theta);
 
         c4[0] = DerivativeTerm(
@@ -630,7 +645,8 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
 
         c5[0] = DerivativeTerm(
             0.,
-            2 * (qperpy * qperpy * s000 + qperpz * qperpz * s000 -
+            2 *
+                (qperpy * qperpy * s000 + qperpz * qperpz * s000 -
                  qperpx * qperpy * s010 + qperpw * qperpz * s010 -
                  qperpw * qperpy * s020 - qperpx * qperpz * s020 -
                  qperpy * qperpy * s100 - qperpz * qperpz * s100 +
@@ -640,7 +656,8 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                  qperpw * qperpy * s120 + qperpx * qperpz * s120 +
                  q0z * (-(q0w * s010) + q0x * s020 + q0w * s110 - q0x * s120)) *
                 theta,
-            2 * (qperpy * qperpy * s001 + qperpz * qperpz * s001 -
+            2 *
+                (qperpy * qperpy * s001 + qperpz * qperpz * s001 -
                  qperpx * qperpy * s011 + qperpw * qperpz * s011 -
                  qperpw * qperpy * s021 - qperpx * qperpz * s021 -
                  qperpy * qperpy * s101 - qperpz * qperpz * s101 +
@@ -650,7 +667,8 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                  qperpw * qperpy * s121 + qperpx * qperpz * s121 +
                  q0z * (-(q0w * s011) + q0x * s021 + q0w * s111 - q0x * s121)) *
                 theta,
-            2 * (qperpy * qperpy * s002 + qperpz * qperpz * s002 -
+            2 *
+                (qperpy * qperpy * s002 + qperpz * qperpz * s002 -
                  qperpx * qperpy * s012 + qperpw * qperpz * s012 -
                  qperpw * qperpy * s022 - qperpx * qperpz * s022 -
                  qperpy * qperpy * s102 - qperpz * qperpz * s102 +
@@ -754,40 +772,44 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                 q0w * (-(q0z * s002) + q0z * s102 + 2 * qperpz * s002 * theta -
                        2 * qperpx * s022 * theta));
 
-        c3[1] = DerivativeTerm(
-            0., 2 * (-(q0x * qperpy * s000) - q0w * qperpz * s000 +
-                     2 * q0x * qperpx * s010 + q0x * qperpw * s020 +
-                     q0w * qperpx * s020 + q0x * qperpy * s100 +
-                     q0w * qperpz * s100 - 2 * q0x * qperpx * s110 -
-                     q0x * qperpw * s120 - q0w * qperpx * s120 +
-                     q0z * (2 * qperpz * s010 - qperpy * s020 +
-                            qperpw * (-s000 + s100) - 2 * qperpz * s110 +
-                            qperpy * s120) +
-                     q0y * (-(qperpx * s000) - qperpz * s020 + qperpx * s100 +
-                            qperpz * s120)) *
-                    theta,
-            2 * (-(q0x * qperpy * s001) - q0w * qperpz * s001 +
-                 2 * q0x * qperpx * s011 + q0x * qperpw * s021 +
-                 q0w * qperpx * s021 + q0x * qperpy * s101 +
-                 q0w * qperpz * s101 - 2 * q0x * qperpx * s111 -
-                 q0x * qperpw * s121 - q0w * qperpx * s121 +
-                 q0z * (2 * qperpz * s011 - qperpy * s021 +
-                        qperpw * (-s001 + s101) - 2 * qperpz * s111 +
-                        qperpy * s121) +
-                 q0y * (-(qperpx * s001) - qperpz * s021 + qperpx * s101 +
-                        qperpz * s121)) *
-                theta,
-            2 * (-(q0x * qperpy * s002) - q0w * qperpz * s002 +
-                 2 * q0x * qperpx * s012 + q0x * qperpw * s022 +
-                 q0w * qperpx * s022 + q0x * qperpy * s102 +
-                 q0w * qperpz * s102 - 2 * q0x * qperpx * s112 -
-                 q0x * qperpw * s122 - q0w * qperpx * s122 +
-                 q0z * (2 * qperpz * s012 - qperpy * s022 +
-                        qperpw * (-s002 + s102) - 2 * qperpz * s112 +
-                        qperpy * s122) +
-                 q0y * (-(qperpx * s002) - qperpz * s022 + qperpx * s102 +
-                        qperpz * s122)) *
-                theta);
+        c3[1] =
+            DerivativeTerm(0.,
+                           2 *
+                               (-(q0x * qperpy * s000) - q0w * qperpz * s000 +
+                                2 * q0x * qperpx * s010 + q0x * qperpw * s020 +
+                                q0w * qperpx * s020 + q0x * qperpy * s100 +
+                                q0w * qperpz * s100 - 2 * q0x * qperpx * s110 -
+                                q0x * qperpw * s120 - q0w * qperpx * s120 +
+                                q0z * (2 * qperpz * s010 - qperpy * s020 +
+                                       qperpw * (-s000 + s100) -
+                                       2 * qperpz * s110 + qperpy * s120) +
+                                q0y * (-(qperpx * s000) - qperpz * s020 +
+                                       qperpx * s100 + qperpz * s120)) *
+                               theta,
+                           2 *
+                               (-(q0x * qperpy * s001) - q0w * qperpz * s001 +
+                                2 * q0x * qperpx * s011 + q0x * qperpw * s021 +
+                                q0w * qperpx * s021 + q0x * qperpy * s101 +
+                                q0w * qperpz * s101 - 2 * q0x * qperpx * s111 -
+                                q0x * qperpw * s121 - q0w * qperpx * s121 +
+                                q0z * (2 * qperpz * s011 - qperpy * s021 +
+                                       qperpw * (-s001 + s101) -
+                                       2 * qperpz * s111 + qperpy * s121) +
+                                q0y * (-(qperpx * s001) - qperpz * s021 +
+                                       qperpx * s101 + qperpz * s121)) *
+                               theta,
+                           2 *
+                               (-(q0x * qperpy * s002) - q0w * qperpz * s002 +
+                                2 * q0x * qperpx * s012 + q0x * qperpw * s022 +
+                                q0w * qperpx * s022 + q0x * qperpy * s102 +
+                                q0w * qperpz * s102 - 2 * q0x * qperpx * s112 -
+                                q0x * qperpw * s122 - q0w * qperpx * s122 +
+                                q0z * (2 * qperpz * s012 - qperpy * s022 +
+                                       qperpw * (-s002 + s102) -
+                                       2 * qperpz * s112 + qperpy * s122) +
+                                q0y * (-(qperpx * s002) - qperpz * s022 +
+                                       qperpx * s102 + qperpz * s122)) *
+                               theta);
 
         c4[1] = DerivativeTerm(
             0.,
@@ -850,54 +872,59 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                        2 * q0y * s022 * theta));
 
         c5[1] = DerivativeTerm(
-            0., -2 * (qperpx * qperpy * s000 + qperpw * qperpz * s000 +
-                      q0z * q0z * s010 - qperpx * qperpx * s010 -
-                      qperpz * qperpz * s010 - q0y * q0z * s020 -
-                      qperpw * qperpx * s020 + qperpy * qperpz * s020 -
-                      qperpx * qperpy * s100 - qperpw * qperpz * s100 +
-                      q0w * q0z * (-s000 + s100) + q0x * q0x * (s010 - s110) -
-                      q0z * q0z * s110 + qperpx * qperpx * s110 +
-                      qperpz * qperpz * s110 +
-                      q0x * (q0y * (-s000 + s100) + q0w * (s020 - s120)) +
-                      q0y * q0z * s120 + qperpw * qperpx * s120 -
-                      qperpy * qperpz * s120) *
-                    theta,
-            -2 * (qperpx * qperpy * s001 + qperpw * qperpz * s001 +
-                  q0z * q0z * s011 - qperpx * qperpx * s011 -
-                  qperpz * qperpz * s011 - q0y * q0z * s021 -
-                  qperpw * qperpx * s021 + qperpy * qperpz * s021 -
-                  qperpx * qperpy * s101 - qperpw * qperpz * s101 +
-                  q0w * q0z * (-s001 + s101) + q0x * q0x * (s011 - s111) -
-                  q0z * q0z * s111 + qperpx * qperpx * s111 +
-                  qperpz * qperpz * s111 +
-                  q0x * (q0y * (-s001 + s101) + q0w * (s021 - s121)) +
-                  q0y * q0z * s121 + qperpw * qperpx * s121 -
-                  qperpy * qperpz * s121) *
+            0.,
+            -2 *
+                (qperpx * qperpy * s000 + qperpw * qperpz * s000 +
+                 q0z * q0z * s010 - qperpx * qperpx * s010 -
+                 qperpz * qperpz * s010 - q0y * q0z * s020 -
+                 qperpw * qperpx * s020 + qperpy * qperpz * s020 -
+                 qperpx * qperpy * s100 - qperpw * qperpz * s100 +
+                 q0w * q0z * (-s000 + s100) + q0x * q0x * (s010 - s110) -
+                 q0z * q0z * s110 + qperpx * qperpx * s110 +
+                 qperpz * qperpz * s110 +
+                 q0x * (q0y * (-s000 + s100) + q0w * (s020 - s120)) +
+                 q0y * q0z * s120 + qperpw * qperpx * s120 -
+                 qperpy * qperpz * s120) *
                 theta,
-            -2 * (qperpx * qperpy * s002 + qperpw * qperpz * s002 +
-                  q0z * q0z * s012 - qperpx * qperpx * s012 -
-                  qperpz * qperpz * s012 - q0y * q0z * s022 -
-                  qperpw * qperpx * s022 + qperpy * qperpz * s022 -
-                  qperpx * qperpy * s102 - qperpw * qperpz * s102 +
-                  q0w * q0z * (-s002 + s102) + q0x * q0x * (s012 - s112) -
-                  q0z * q0z * s112 + qperpx * qperpx * s112 +
-                  qperpz * qperpz * s112 +
-                  q0x * (q0y * (-s002 + s102) + q0w * (s022 - s122)) +
-                  q0y * q0z * s122 + qperpw * qperpx * s122 -
-                  qperpy * qperpz * s122) *
+            -2 *
+                (qperpx * qperpy * s001 + qperpw * qperpz * s001 +
+                 q0z * q0z * s011 - qperpx * qperpx * s011 -
+                 qperpz * qperpz * s011 - q0y * q0z * s021 -
+                 qperpw * qperpx * s021 + qperpy * qperpz * s021 -
+                 qperpx * qperpy * s101 - qperpw * qperpz * s101 +
+                 q0w * q0z * (-s001 + s101) + q0x * q0x * (s011 - s111) -
+                 q0z * q0z * s111 + qperpx * qperpx * s111 +
+                 qperpz * qperpz * s111 +
+                 q0x * (q0y * (-s001 + s101) + q0w * (s021 - s121)) +
+                 q0y * q0z * s121 + qperpw * qperpx * s121 -
+                 qperpy * qperpz * s121) *
+                theta,
+            -2 *
+                (qperpx * qperpy * s002 + qperpw * qperpz * s002 +
+                 q0z * q0z * s012 - qperpx * qperpx * s012 -
+                 qperpz * qperpz * s012 - q0y * q0z * s022 -
+                 qperpw * qperpx * s022 + qperpy * qperpz * s022 -
+                 qperpx * qperpy * s102 - qperpw * qperpz * s102 +
+                 q0w * q0z * (-s002 + s102) + q0x * q0x * (s012 - s112) -
+                 q0z * q0z * s112 + qperpx * qperpx * s112 +
+                 qperpz * qperpz * s112 +
+                 q0x * (q0y * (-s002 + s102) + q0w * (s022 - s122)) +
+                 q0y * q0z * s122 + qperpw * qperpx * s122 -
+                 qperpy * qperpz * s122) *
                 theta);
 
         c1[2] = DerivativeTerm(
-            -t0z + t1z, (qperpw * qperpy * s000 - qperpx * qperpz * s000 -
-                         q0y * q0z * s010 - qperpw * qperpx * s010 -
-                         qperpy * qperpz * s010 - s020 + q0y * q0y * s020 +
-                         qperpx * qperpx * s020 + qperpy * qperpy * s020 -
-                         qperpw * qperpy * s100 + qperpx * qperpz * s100 +
-                         q0x * q0z * (-s000 + s100) + q0y * q0z * s110 +
-                         qperpw * qperpx * s110 + qperpy * qperpz * s110 +
-                         q0w * (q0y * (s000 - s100) + q0x * (-s010 + s110)) +
-                         q0x * q0x * (s020 - s120) + s120 - q0y * q0y * s120 -
-                         qperpx * qperpx * s120 - qperpy * qperpy * s120),
+            -t0z + t1z,
+            (qperpw * qperpy * s000 - qperpx * qperpz * s000 -
+             q0y * q0z * s010 - qperpw * qperpx * s010 -
+             qperpy * qperpz * s010 - s020 + q0y * q0y * s020 +
+             qperpx * qperpx * s020 + qperpy * qperpy * s020 -
+             qperpw * qperpy * s100 + qperpx * qperpz * s100 +
+             q0x * q0z * (-s000 + s100) + q0y * q0z * s110 +
+             qperpw * qperpx * s110 + qperpy * qperpz * s110 +
+             q0w * (q0y * (s000 - s100) + q0x * (-s010 + s110)) +
+             q0x * q0x * (s020 - s120) + s120 - q0y * q0y * s120 -
+             qperpx * qperpx * s120 - qperpy * qperpy * s120),
             (qperpw * qperpy * s001 - qperpx * qperpz * s001 -
              q0y * q0z * s011 - qperpw * qperpx * s011 -
              qperpy * qperpz * s011 - s021 + q0y * q0y * s021 +
@@ -965,43 +992,47 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
              4 * q0x * qperpx * s022 * theta -
              4 * q0y * qperpy * s022 * theta));
 
-        c3[2] = DerivativeTerm(
-            0., -2 * (-(q0w * qperpy * s000) + q0x * qperpz * s000 +
-                      q0x * qperpw * s010 + q0w * qperpx * s010 -
-                      2 * q0x * qperpx * s020 + q0w * qperpy * s100 -
-                      q0x * qperpz * s100 - q0x * qperpw * s110 -
-                      q0w * qperpx * s110 +
-                      q0z * (qperpx * s000 + qperpy * s010 - qperpx * s100 -
-                             qperpy * s110) +
-                      2 * q0x * qperpx * s120 +
-                      q0y * (qperpz * s010 - 2 * qperpy * s020 +
-                             qperpw * (-s000 + s100) - qperpz * s110 +
-                             2 * qperpy * s120)) *
-                    theta,
-            -2 * (-(q0w * qperpy * s001) + q0x * qperpz * s001 +
-                  q0x * qperpw * s011 + q0w * qperpx * s011 -
-                  2 * q0x * qperpx * s021 + q0w * qperpy * s101 -
-                  q0x * qperpz * s101 - q0x * qperpw * s111 -
-                  q0w * qperpx * s111 +
-                  q0z * (qperpx * s001 + qperpy * s011 - qperpx * s101 -
-                         qperpy * s111) +
-                  2 * q0x * qperpx * s121 +
-                  q0y * (qperpz * s011 - 2 * qperpy * s021 +
-                         qperpw * (-s001 + s101) - qperpz * s111 +
-                         2 * qperpy * s121)) *
-                theta,
-            -2 * (-(q0w * qperpy * s002) + q0x * qperpz * s002 +
-                  q0x * qperpw * s012 + q0w * qperpx * s012 -
-                  2 * q0x * qperpx * s022 + q0w * qperpy * s102 -
-                  q0x * qperpz * s102 - q0x * qperpw * s112 -
-                  q0w * qperpx * s112 +
-                  q0z * (qperpx * s002 + qperpy * s012 - qperpx * s102 -
-                         qperpy * s112) +
-                  2 * q0x * qperpx * s122 +
-                  q0y * (qperpz * s012 - 2 * qperpy * s022 +
-                         qperpw * (-s002 + s102) - qperpz * s112 +
-                         2 * qperpy * s122)) *
-                theta);
+        c3[2] =
+            DerivativeTerm(0.,
+                           -2 *
+                               (-(q0w * qperpy * s000) + q0x * qperpz * s000 +
+                                q0x * qperpw * s010 + q0w * qperpx * s010 -
+                                2 * q0x * qperpx * s020 + q0w * qperpy * s100 -
+                                q0x * qperpz * s100 - q0x * qperpw * s110 -
+                                q0w * qperpx * s110 +
+                                q0z * (qperpx * s000 + qperpy * s010 -
+                                       qperpx * s100 - qperpy * s110) +
+                                2 * q0x * qperpx * s120 +
+                                q0y * (qperpz * s010 - 2 * qperpy * s020 +
+                                       qperpw * (-s000 + s100) - qperpz * s110 +
+                                       2 * qperpy * s120)) *
+                               theta,
+                           -2 *
+                               (-(q0w * qperpy * s001) + q0x * qperpz * s001 +
+                                q0x * qperpw * s011 + q0w * qperpx * s011 -
+                                2 * q0x * qperpx * s021 + q0w * qperpy * s101 -
+                                q0x * qperpz * s101 - q0x * qperpw * s111 -
+                                q0w * qperpx * s111 +
+                                q0z * (qperpx * s001 + qperpy * s011 -
+                                       qperpx * s101 - qperpy * s111) +
+                                2 * q0x * qperpx * s121 +
+                                q0y * (qperpz * s011 - 2 * qperpy * s021 +
+                                       qperpw * (-s001 + s101) - qperpz * s111 +
+                                       2 * qperpy * s121)) *
+                               theta,
+                           -2 *
+                               (-(q0w * qperpy * s002) + q0x * qperpz * s002 +
+                                q0x * qperpw * s012 + q0w * qperpx * s012 -
+                                2 * q0x * qperpx * s022 + q0w * qperpy * s102 -
+                                q0x * qperpz * s102 - q0x * qperpw * s112 -
+                                q0w * qperpx * s112 +
+                                q0z * (qperpx * s002 + qperpy * s012 -
+                                       qperpx * s102 - qperpy * s112) +
+                                2 * q0x * qperpx * s122 +
+                                q0y * (qperpz * s012 - 2 * qperpy * s022 +
+                                       qperpw * (-s002 + s102) - qperpz * s112 +
+                                       2 * qperpy * s122)) *
+                               theta);
 
         c4[2] = DerivativeTerm(
             0.,
@@ -1061,19 +1092,22 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                        2 * q0z * s012 * theta));
 
         c5[2] = DerivativeTerm(
-            0., 2 * (qperpw * qperpy * s000 - qperpx * qperpz * s000 +
-                     q0y * q0z * s010 - qperpw * qperpx * s010 -
-                     qperpy * qperpz * s010 - q0y * q0y * s020 +
-                     qperpx * qperpx * s020 + qperpy * qperpy * s020 +
-                     q0x * q0z * (s000 - s100) - qperpw * qperpy * s100 +
-                     qperpx * qperpz * s100 +
-                     q0w * (q0y * (-s000 + s100) + q0x * (s010 - s110)) -
-                     q0y * q0z * s110 + qperpw * qperpx * s110 +
-                     qperpy * qperpz * s110 + q0y * q0y * s120 -
-                     qperpx * qperpx * s120 - qperpy * qperpy * s120 +
-                     q0x * q0x * (-s020 + s120)) *
-                    theta,
-            2 * (qperpw * qperpy * s001 - qperpx * qperpz * s001 +
+            0.,
+            2 *
+                (qperpw * qperpy * s000 - qperpx * qperpz * s000 +
+                 q0y * q0z * s010 - qperpw * qperpx * s010 -
+                 qperpy * qperpz * s010 - q0y * q0y * s020 +
+                 qperpx * qperpx * s020 + qperpy * qperpy * s020 +
+                 q0x * q0z * (s000 - s100) - qperpw * qperpy * s100 +
+                 qperpx * qperpz * s100 +
+                 q0w * (q0y * (-s000 + s100) + q0x * (s010 - s110)) -
+                 q0y * q0z * s110 + qperpw * qperpx * s110 +
+                 qperpy * qperpz * s110 + q0y * q0y * s120 -
+                 qperpx * qperpx * s120 - qperpy * qperpy * s120 +
+                 q0x * q0x * (-s020 + s120)) *
+                theta,
+            2 *
+                (qperpw * qperpy * s001 - qperpx * qperpz * s001 +
                  q0y * q0z * s011 - qperpw * qperpx * s011 -
                  qperpy * qperpz * s011 - q0y * q0y * s021 +
                  qperpx * qperpx * s021 + qperpy * qperpy * s021 +
@@ -1085,7 +1119,8 @@ AnimatedTransform::AnimatedTransform(const Transform *startTransform,
                  qperpx * qperpx * s121 - qperpy * qperpy * s121 +
                  q0x * q0x * (-s021 + s121)) *
                 theta,
-            2 * (qperpw * qperpy * s002 - qperpx * qperpz * s002 +
+            2 *
+                (qperpw * qperpy * s002 - qperpx * qperpz * s002 +
                  q0y * q0z * s012 - qperpw * qperpx * s012 -
                  qperpy * qperpz * s012 - q0y * q0y * s022 +
                  qperpx * qperpx * s022 + qperpy * qperpy * s022 +
