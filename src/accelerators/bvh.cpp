@@ -30,14 +30,15 @@
 
  */
 
-
 // accelerators/bvh.cpp*
 #include "accelerators/bvh.h"
+
+#include <algorithm>
+
 #include "interaction.h"
+#include "parallel.h"
 #include "paramset.h"
 #include "stats.h"
-#include "parallel.h"
-#include <algorithm>
 
 namespace pbrt {
 
@@ -125,7 +126,7 @@ inline uint32_t LeftShift3(uint32_t x) {
     // x = ---- --98 ---- 76-- --54 ---- 32-- --10
     x = (x | (x << 2)) & 0x9249249;
     // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
-#endif // PBRT_HAVE_BINARY_CONSTANTS
+#endif  // PBRT_HAVE_BINARY_CONSTANTS
     return x;
 }
 
@@ -207,13 +208,12 @@ BVHAccel::BVHAccel(std::vector<std::shared_ptr<Primitive>> p,
                               &totalNodes, orderedPrims);
     primitives.swap(orderedPrims);
     primitiveInfo.resize(0);
-    LOG(INFO) << StringPrintf("BVH created with %d nodes for %d "
-                              "primitives (%.2f MB), arena allocated %.2f MB",
-                              totalNodes, (int)primitives.size(),
-                              float(totalNodes * sizeof(LinearBVHNode)) /
-                              (1024.f * 1024.f),
-                              float(arena.TotalAllocated()) /
-                              (1024.f * 1024.f));
+    LOG(INFO) << StringPrintf(
+        "BVH created with %d nodes for %d "
+        "primitives (%.2f MB), arena allocated %.2f MB",
+        totalNodes, (int)primitives.size(),
+        float(totalNodes * sizeof(LinearBVHNode)) / (1024.f * 1024.f),
+        float(arena.TotalAllocated()) / (1024.f * 1024.f));
 
     // Compute representation of depth-first traversal of BVH tree
     treeBytes += totalNodes * sizeof(LinearBVHNode) + sizeof(*this) +
@@ -322,9 +322,8 @@ BVHBuildNode *BVHAccel::recursiveBuild(
 
                     // Initialize _BucketInfo_ for SAH partition buckets
                     for (int i = start; i < end; ++i) {
-                        int b = nBuckets *
-                                centroidBounds.Offset(
-                                    primitiveInfo[i].centroid)[dim];
+                        int b = nBuckets * centroidBounds.Offset(
+                                               primitiveInfo[i].centroid)[dim];
                         if (b == nBuckets) b = nBuckets - 1;
                         CHECK_GE(b, 0);
                         CHECK_LT(b, nBuckets);
@@ -346,10 +345,9 @@ BVHBuildNode *BVHAccel::recursiveBuild(
                             b1 = Union(b1, buckets[j].bounds);
                             count1 += buckets[j].count;
                         }
-                        cost[i] = 1 +
-                                  (count0 * b0.SurfaceArea() +
-                                   count1 * b1.SurfaceArea()) /
-                                      bounds.SurfaceArea();
+                        cost[i] = 1 + (count0 * b0.SurfaceArea() +
+                                       count1 * b1.SurfaceArea()) /
+                                          bounds.SurfaceArea();
                     }
 
                     // Find bucket to split at that minimizes SAH metric
@@ -412,14 +410,17 @@ BVHBuildNode *BVHAccel::HLBVHBuild(
 
     // Compute Morton indices of primitives
     std::vector<MortonPrimitive> mortonPrims(primitiveInfo.size());
-    ParallelFor([&](int i) {
-        // Initialize _mortonPrims[i]_ for _i_th primitive
-        PBRT_CONSTEXPR int mortonBits = 10;
-        PBRT_CONSTEXPR int mortonScale = 1 << mortonBits;
-        mortonPrims[i].primitiveIndex = primitiveInfo[i].primitiveNumber;
-        Vector3f centroidOffset = bounds.Offset(primitiveInfo[i].centroid);
-        mortonPrims[i].mortonCode = EncodeMorton3(centroidOffset * mortonScale);
-    }, primitiveInfo.size(), 512);
+    ParallelFor(
+        [&](int i) {
+            // Initialize _mortonPrims[i]_ for _i_th primitive
+            PBRT_CONSTEXPR int mortonBits = 10;
+            PBRT_CONSTEXPR int mortonScale = 1 << mortonBits;
+            mortonPrims[i].primitiveIndex = primitiveInfo[i].primitiveNumber;
+            Vector3f centroidOffset = bounds.Offset(primitiveInfo[i].centroid);
+            mortonPrims[i].mortonCode =
+                EncodeMorton3(centroidOffset * mortonScale);
+        },
+        primitiveInfo.size(), 512);
 
     // Radix sort primitive Morton indices
     RadixSort(&mortonPrims);
@@ -430,11 +431,11 @@ BVHBuildNode *BVHAccel::HLBVHBuild(
     std::vector<LBVHTreelet> treeletsToBuild;
     for (int start = 0, end = 1; end <= (int)mortonPrims.size(); ++end) {
 #ifdef PBRT_HAVE_BINARY_CONSTANTS
-      uint32_t mask = 0b00111111111111000000000000000000;
+        uint32_t mask = 0b00111111111111000000000000000000;
 #else
-      uint32_t mask = 0x3ffc0000;
+        uint32_t mask = 0x3ffc0000;
 #endif
-      if (end == (int)mortonPrims.size() ||
+        if (end == (int)mortonPrims.size() ||
             ((mortonPrims[start].mortonCode & mask) !=
              (mortonPrims[end].mortonCode & mask))) {
             // Add entry to _treeletsToBuild_ for this treelet
@@ -449,17 +450,19 @@ BVHBuildNode *BVHAccel::HLBVHBuild(
     // Create LBVHs for treelets in parallel
     std::atomic<int> atomicTotal(0), orderedPrimsOffset(0);
     orderedPrims.resize(primitives.size());
-    ParallelFor([&](int i) {
-        // Generate _i_th LBVH treelet
-        int nodesCreated = 0;
-        const int firstBitIndex = 29 - 12;
-        LBVHTreelet &tr = treeletsToBuild[i];
-        tr.buildNodes =
-            emitLBVH(tr.buildNodes, primitiveInfo, &mortonPrims[tr.startIndex],
-                     tr.nPrimitives, &nodesCreated, orderedPrims,
-                     &orderedPrimsOffset, firstBitIndex);
-        atomicTotal += nodesCreated;
-    }, treeletsToBuild.size());
+    ParallelFor(
+        [&](int i) {
+            // Generate _i_th LBVH treelet
+            int nodesCreated = 0;
+            const int firstBitIndex = 29 - 12;
+            LBVHTreelet &tr = treeletsToBuild[i];
+            tr.buildNodes = emitLBVH(
+                tr.buildNodes, primitiveInfo, &mortonPrims[tr.startIndex],
+                tr.nPrimitives, &nodesCreated, orderedPrims,
+                &orderedPrimsOffset, firstBitIndex);
+            atomicTotal += nodesCreated;
+        },
+        treeletsToBuild.size());
     *totalNodes = atomicTotal;
 
     // Create and return SAH BVH from LBVH treelets
@@ -599,9 +602,9 @@ BVHBuildNode *BVHAccel::buildUpperSAH(MemoryArena &arena,
             b1 = Union(b1, buckets[j].bounds);
             count1 += buckets[j].count;
         }
-        cost[i] = .125f +
-                  (count0 * b0.SurfaceArea() + count1 * b1.SurfaceArea()) /
-                      bounds.SurfaceArea();
+        cost[i] =
+            .125f + (count0 * b0.SurfaceArea() + count1 * b1.SurfaceArea()) /
+                        bounds.SurfaceArea();
     }
 
     // Find bucket to split at that minimizes SAH metric
@@ -756,7 +759,8 @@ std::shared_ptr<BVHAccel> CreateBVHAccelerator(
     }
 
     int maxPrimsInNode = ps.FindOneInt("maxnodeprims", 4);
-    return std::make_shared<BVHAccel>(std::move(prims), maxPrimsInNode, splitMethod);
+    return std::make_shared<BVHAccel>(std::move(prims), maxPrimsInNode,
+                                      splitMethod);
 }
 
 }  // namespace pbrt

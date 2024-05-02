@@ -30,13 +30,14 @@
 
  */
 
-
 // accelerators/kdtreeaccel.cpp*
 #include "accelerators/kdtreeaccel.h"
-#include "paramset.h"
-#include "interaction.h"
-#include "stats.h"
+
 #include <algorithm>
+
+#include "interaction.h"
+#include "paramset.h"
+#include "stats.h"
 
 namespace pbrt {
 
@@ -437,8 +438,8 @@ std::shared_ptr<KdTreeAccel> CreateKdTreeAccelerator(
     Float emptyBonus = ps.FindOneFloat("emptybonus", 0.5f);
     int maxPrims = ps.FindOneInt("maxprims", 1);
     int maxDepth = ps.FindOneInt("maxdepth", -1);
-    return std::make_shared<KdTreeAccel>(std::move(prims), isectCost, travCost, emptyBonus,
-                                         maxPrims, maxDepth);
+    return std::make_shared<KdTreeAccel>(std::move(prims), isectCost, travCost,
+                                         emptyBonus, maxPrims, maxDepth);
 }
 
 }  // namespace pbrt
