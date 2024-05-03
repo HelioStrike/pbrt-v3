@@ -21,9 +21,13 @@ class HeightField2 : public Shape {
   private:
     int nx_, ny_, ntris_, nverts_;
     int *verts_;
+    Float zMin = 10000000, zMax = -10000000;
     const Float *z_;
     std::unique_ptr<int[]> indices_;
     std::unique_ptr<Point3f[]> P_;
+    std::unique_ptr<Normal3f[]> FN_;
+    std::unique_ptr<Normal3f[]> PN_;
+    std::unique_ptr<int[]> PN_div_;
     std::unique_ptr<Point2f[]> uvs_;
     Bounds3f bounds_;
 };
