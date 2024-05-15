@@ -80,6 +80,12 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
             ++pos;
         }
     }
+
+    nVoxels[0] = nx_;
+    nVoxels[1] = ny_;
+    nVoxels[2] = 1;
+    width[2] = zMax - zMin;
+    invWidth[2] = 1 / (zMax - zMin);
 }
 
 Bounds3f HeightField2::ObjectBound() const {
@@ -100,31 +106,46 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
                              bool testAlphaTexture) const {
     auto rayToObject = (*WorldToObject)(ray);
 
-    // Float m = rayToObjectd.y / rayToObjectd.x;
-    // Float d = rayToObjecto.y - rayToObjecto.x * m;
+    float rayT;
+    if (Inside(rayToObject(0), bounds_))
+        rayT = 0;
+    else if (!bounds_.IntersectP(rayToObject, &rayT)) {
+        return false;
+    }
+    Point3f gridIntersect = rayToObject(rayT);
 
-    // Float ddax0 = -d / m, dday0 = d, ddax1 = (1 - d) / m, dday1 = m + b;
-    // Float timeX0 = (ddax0 - rayToObjecto.x) / rayToObjectd.x,
-    //       timeY0 = (dday0 - rayToObjecto.y) / rayToObjectd.y,
-    //       timeX1 = (ddax1 - rayToObjecto.x) / rayToObjectd.x,
-    //       timeY1 = (dday1 - rayToObjecto.y) / rayToObjectd.y;
-    // Float tmin = std::min(timeX0, std::min(timeY0, std::min(timeX1,
-    // timeY1))); Float tmax = std::max(timeX0, std::max(timeY0,
-    // std::max(timeX1, timeY1))); Point3f curt = tmin;
+    // Set up 3D DDA for ray
+    float NextCrossingT[3], DeltaT[3];
+    int Step[3], Out[3], Pos[3];
+    int nVoxels[3] = {nx_, ny_, 1};
+    for (int axis = 0; axis < 3; ++axis) {
+        if (rayToObject.d[axis] == -0.f) rayToObject.d[axis] = 0.f;
+        // Compute current voxel for axis
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (rayToObject.d[axis] >= 0) {
+            // Handle ray with positive direction for voxel stepping
+            NextCrossingT[axis] =
+                rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) /
+                           rayToObject.d[axis];
+            DeltaT[axis] = 1 / rayToObject.d[axis];
+            Step[axis] = 1;
+            Out[axis] = nVoxels[axis];
+        } else {
+            // Handle ray with negative direction for voxel stepping
+            NextCrossingT[axis] =
+                rayT + (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) /
+                           rayToObject.d[axis];
+            DeltaT[axis] = -width[axis] / rayToObject.d[axis];
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
 
-    // while (curt < tmax) {
-    //     Point3f curp = rayToObjecto + curt * rayToObjectd;
-
-    //     Float jumpToNextXP = int(curp.x / (1 / nx)) + (1 / nx);
-    //     Float jumpToNextYP = int(curp.y / (1 / ny)) + (1 / ny);
-    //     int tToNextXP = rayToObjectd.x == 0
-    //                         ? 1000000
-    //                         : (jumpToNextXP - curp.x) / (rayToObjectd.x);
-    //     int tToNextYP = rayToObjectd.y == 0
-    //                         ? 1000000
-    //                         : (jumpToNextYP - curp.y) / (rayToObjectd.y);
-    //     curt = curt + std::min(tToNextXP, tToNextYP);
-    // }
+    // Walk ray through voxel grid
+    bool hitSomething = false;
+    for (;;) {
+    }
+    return hitSomething;
 
     for (int i = 0; i < ntris_; i++) {
         auto i0 = indices_[3 * i];
@@ -285,7 +306,7 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
                 SurfaceInteraction(pHit, pError, uvHit, -rayToObject.d, dpdu,
                                    dpdv, Normal3f(0, 0, 0), Normal3f(0, 0, 0),
                                    rayToObject.time, this, i));
-            isect->n = isect->shading.n = isect->shading.n = normalInterpolated;
+            isect->n = isect->shading.n = (*ObjectToWorld)(normalInterpolated);
         }
         if (tHit != nullptr) {
             *tHit = t;
