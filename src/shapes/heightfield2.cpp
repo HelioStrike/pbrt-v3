@@ -81,11 +81,14 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
         }
     }
 
-    nVoxels[0] = nx_;
-    nVoxels[1] = ny_;
+    nVoxels[0] = nx_ - 1;
+    nVoxels[1] = ny_ - 1;
     nVoxels[2] = 1;
-    width[2] = zMax - zMin;
-    invWidth[2] = 1 / (zMax - zMin);
+
+    for (int axis = 0; axis < 2; axis++) {
+        width[axis] = (axis == 2 ? zMax - zMin : 1.f) / nVoxels[axis];
+        invWidth[axis] = 1.f / width[axis];
+    }
 }
 
 Bounds3f HeightField2::ObjectBound() const {
@@ -144,176 +147,193 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
     // Walk ray through voxel grid
     bool hitSomething = false;
     for (;;) {
+        int triangle_index = Pos[0] + (ny_ - 1) * Pos[1];
+        hitSomething |=
+            IntersectWithTriangle(triangle_index, rayToObject, tHit, isect) ||
+            IntersectWithTriangle(triangle_index + 1, rayToObject, tHit, isect);
+
+        // Advance to next voxel
+
+        // Find _stepAxis_ for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) +
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) +
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = {2, 1, 2, 1, 2, 2, 0, 0};
+        int stepAxis = cmpToAxis[bits];
+        if (ray.tMax < NextCrossingT[stepAxis]) break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis]) break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
     }
     return hitSomething;
+}
 
-    for (int i = 0; i < ntris_; i++) {
-        auto i0 = indices_[3 * i];
-        auto i1 = indices_[3 * i + 1];
-        auto i2 = indices_[3 * i + 2];
+bool HeightField2::IntersectWithTriangle(int index, Ray rayToObject,
+                                         Float *tHit,
+                                         SurfaceInteraction *isect) const {
+    auto i0 = indices_[3 * index];
+    auto i1 = indices_[3 * index + 1];
+    auto i2 = indices_[3 * index + 2];
 
-        // Get triangle vertices in _p0_, _p1_, and _p2_
-        const Point3f &p0 = P_[i0];
-        const Point3f &p1 = P_[i1];
-        const Point3f &p2 = P_[i2];
+    // Get triangle vertices in _p0_, _p1_, and _p2_
+    const Point3f &p0 = P_[i0];
+    const Point3f &p1 = P_[i1];
+    const Point3f &p2 = P_[i2];
 
-        const Normal3f &n0 = PN_[i0];
-        const Normal3f &n1 = PN_[i1];
-        const Normal3f &n2 = PN_[i2];
+    const Normal3f &n0 = PN_[i0];
+    const Normal3f &n1 = PN_[i1];
+    const Normal3f &n2 = PN_[i2];
 
-        // Perform ray--triangle intersection test
+    // Perform ray--triangle intersection test
 
-        // Transform triangle vertices to ray coordinate space
+    // Transform triangle vertices to ray coordinate space
 
-        // Translate vertices based on ray origin
-        Point3f p0t = p0 - Vector3f(rayToObject.o);
-        Point3f p1t = p1 - Vector3f(rayToObject.o);
-        Point3f p2t = p2 - Vector3f(rayToObject.o);
+    // Translate vertices based on ray origin
+    Point3f p0t = p0 - Vector3f(rayToObject.o);
+    Point3f p1t = p1 - Vector3f(rayToObject.o);
+    Point3f p2t = p2 - Vector3f(rayToObject.o);
 
-        // Permute components of triangle vertices and ray direction
-        int kz = MaxDimension(Abs(rayToObject.d));
-        int kx = kz + 1;
-        if (kx == 3) kx = 0;
-        int ky = kx + 1;
-        if (ky == 3) ky = 0;
-        Vector3f d = Permute(rayToObject.d, kx, ky, kz);
-        p0t = Permute(p0t, kx, ky, kz);
-        p1t = Permute(p1t, kx, ky, kz);
-        p2t = Permute(p2t, kx, ky, kz);
+    // Permute components of triangle vertices and ray direction
+    int kz = MaxDimension(Abs(rayToObject.d));
+    int kx = kz + 1;
+    if (kx == 3) kx = 0;
+    int ky = kx + 1;
+    if (ky == 3) ky = 0;
+    Vector3f d = Permute(rayToObject.d, kx, ky, kz);
+    p0t = Permute(p0t, kx, ky, kz);
+    p1t = Permute(p1t, kx, ky, kz);
+    p2t = Permute(p2t, kx, ky, kz);
 
-        // Apply shear transformation to translated vertex positions
-        Float Sx = -d.x / d.z;
-        Float Sy = -d.y / d.z;
-        Float Sz = 1.f / d.z;
-        p0t.x += Sx * p0t.z;
-        p0t.y += Sy * p0t.z;
-        p1t.x += Sx * p1t.z;
-        p1t.y += Sy * p1t.z;
-        p2t.x += Sx * p2t.z;
-        p2t.y += Sy * p2t.z;
+    // Apply shear transformation to translated vertex positions
+    Float Sx = -d.x / d.z;
+    Float Sy = -d.y / d.z;
+    Float Sz = 1.f / d.z;
+    p0t.x += Sx * p0t.z;
+    p0t.y += Sy * p0t.z;
+    p1t.x += Sx * p1t.z;
+    p1t.y += Sy * p1t.z;
+    p2t.x += Sx * p2t.z;
+    p2t.y += Sy * p2t.z;
 
-        // Compute edge function coefficients _e0_, _e1_, and _e2_
-        Float e0 = p1t.x * p2t.y - p1t.y * p2t.x;
-        Float e1 = p2t.x * p0t.y - p2t.y * p0t.x;
-        Float e2 = p0t.x * p1t.y - p0t.y * p1t.x;
+    // Compute edge function coefficients _e0_, _e1_, and _e2_
+    Float e0 = p1t.x * p2t.y - p1t.y * p2t.x;
+    Float e1 = p2t.x * p0t.y - p2t.y * p0t.x;
+    Float e2 = p0t.x * p1t.y - p0t.y * p1t.x;
 
-        // Fall back to double precision test at triangle edges
-        if (sizeof(Float) == sizeof(float) &&
-            (e0 == 0.0f || e1 == 0.0f || e2 == 0.0f)) {
-            double p2txp1ty = (double)p2t.x * (double)p1t.y;
-            double p2typ1tx = (double)p2t.y * (double)p1t.x;
-            e0 = (float)(p2typ1tx - p2txp1ty);
-            double p0txp2ty = (double)p0t.x * (double)p2t.y;
-            double p0typ2tx = (double)p0t.y * (double)p2t.x;
-            e1 = (float)(p0typ2tx - p0txp2ty);
-            double p1txp0ty = (double)p1t.x * (double)p0t.y;
-            double p1typ0tx = (double)p1t.y * (double)p0t.x;
-            e2 = (float)(p1typ0tx - p1txp0ty);
-        }
-
-        if ((e0 < 0 || e1 < 0 || e2 < 0) && (e0 > 0 || e1 > 0 || e2 > 0))
-            continue;
-        Float det = e0 + e1 + e2;
-        if (det == 0) continue;
-
-        // Compute scaled hit distance to triangle and test against ray $t$
-        // range
-        p0t.z *= Sz;
-        p1t.z *= Sz;
-        p2t.z *= Sz;
-        Float tScaled = e0 * p0t.z + e1 * p1t.z + e2 * p2t.z;
-        if (det < 0 && (tScaled >= 0 || tScaled < rayToObject.tMax * det))
-            continue;
-        else if (det > 0 && (tScaled <= 0 || tScaled > rayToObject.tMax * det))
-            continue;
-
-        // Compute barycentric coordinates and $t$ value for triangle
-        // intersection
-        Float invDet = 1 / det;
-        Float b0 = e0 * invDet;
-        Float b1 = e1 * invDet;
-        Float b2 = e2 * invDet;
-        Float t = tScaled * invDet;
-
-        // Ensure that computed triangle $t$ is conservatively greater than
-        // zero
-
-        // Compute $\delta_z$ term for triangle $t$ error bounds
-        Float maxZt = MaxComponent(Abs(Vector3f(p0t.z, p1t.z, p2t.z)));
-        Float deltaZ = gamma(3) * maxZt;
-
-        // Compute $\delta_x$ and $\delta_y$ terms for triangle $t$ error
-        // bounds
-        Float maxXt = MaxComponent(Abs(Vector3f(p0t.x, p1t.x, p2t.x)));
-        Float maxYt = MaxComponent(Abs(Vector3f(p0t.y, p1t.y, p2t.y)));
-        Float deltaX = gamma(5) * (maxXt + maxZt);
-        Float deltaY = gamma(5) * (maxYt + maxZt);
-
-        // Compute $\delta_e$ term for triangle $t$ error bounds
-        Float deltaE =
-            2 * (gamma(2) * maxXt * maxYt + deltaY * maxXt + deltaX * maxYt);
-
-        // Compute $\delta_t$ term for triangle $t$ error bounds and check
-        // _t_
-        Float maxE = MaxComponent(Abs(Vector3f(e0, e1, e2)));
-        Float deltaT =
-            3 * (gamma(3) * maxE * maxZt + deltaE * maxZt + deltaZ * maxE) *
-            std::abs(invDet);
-        if (t <= deltaT) continue;
-
-        // Compute triangle partial derivatives
-        Vector3f dpdu, dpdv;
-
-        // Compute deltas for triangle partial derivatives
-        Vector2f duv02 = uvs_[0] - uvs_[2], duv12 = uvs_[1] - uvs_[2];
-        Vector3f dp02 = p0 - p2, dp12 = p1 - p2;
-        Float determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
-        bool degenerateUV = std::abs(determinant) < 1e-8;
-        if (!degenerateUV) {
-            Float invdet = 1 / determinant;
-            dpdu = (duv12[1] * dp02 - duv02[1] * dp12) * invdet;
-            dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
-        }
-        if (degenerateUV || Cross(dpdu, dpdv).LengthSquared() == 0) {
-            // Handle zero determinant for triangle partial derivative
-            // matrix
-            Vector3f ng = Cross(p2 - p0, p1 - p0);
-            if (ng.LengthSquared() == 0)
-                // The triangle is actually degenerate; the intersection is
-                // bogus.
-                continue;
-
-            CoordinateSystem(Normalize(ng), &dpdu, &dpdv);
-        }
-
-        // Compute error bounds for triangle intersection
-        Float xAbsSum =
-            (std::abs(b0 * p0.x) + std::abs(b1 * p1.x) + std::abs(b2 * p2.x));
-        Float yAbsSum =
-            (std::abs(b0 * p0.y) + std::abs(b1 * p1.y) + std::abs(b2 * p2.y));
-        Float zAbsSum =
-            (std::abs(b0 * p0.z) + std::abs(b1 * p1.z) + std::abs(b2 * p2.z));
-        Vector3f pError = gamma(7) * Vector3f(xAbsSum, yAbsSum, zAbsSum);
-
-        // Interpolate $(u,v)$ parametric coordinates and hit point
-        Point3f pHit = b0 * p0 + b1 * p1 + b2 * p2;
-        Point2f uvHit = b0 * uvs_[0] + b1 * uvs_[1] + b2 * uvs_[2];
-        Normal3f normalInterpolated = b0 * n0 + b1 * n1 + b2 * n2;
-
-        // Fill in _SurfaceInteraction_ from triangle hit
-        if (isect != nullptr) {
-            *isect = (*ObjectToWorld)(
-                SurfaceInteraction(pHit, pError, uvHit, -rayToObject.d, dpdu,
-                                   dpdv, Normal3f(0, 0, 0), Normal3f(0, 0, 0),
-                                   rayToObject.time, this, i));
-            isect->n = isect->shading.n = (*ObjectToWorld)(normalInterpolated);
-        }
-        if (tHit != nullptr) {
-            *tHit = t;
-        }
-        return true;
+    // Fall back to double precision test at triangle edges
+    if (sizeof(Float) == sizeof(float) &&
+        (e0 == 0.0f || e1 == 0.0f || e2 == 0.0f)) {
+        double p2txp1ty = (double)p2t.x * (double)p1t.y;
+        double p2typ1tx = (double)p2t.y * (double)p1t.x;
+        e0 = (float)(p2typ1tx - p2txp1ty);
+        double p0txp2ty = (double)p0t.x * (double)p2t.y;
+        double p0typ2tx = (double)p0t.y * (double)p2t.x;
+        e1 = (float)(p0typ2tx - p0txp2ty);
+        double p1txp0ty = (double)p1t.x * (double)p0t.y;
+        double p1typ0tx = (double)p1t.y * (double)p0t.x;
+        e2 = (float)(p1typ0tx - p1txp0ty);
     }
-    return false;
+
+    if ((e0 < 0 || e1 < 0 || e2 < 0) && (e0 > 0 || e1 > 0 || e2 > 0))
+        return false;
+    Float det = e0 + e1 + e2;
+    if (det == 0) return false;
+
+    // Compute scaled hit distance to triangle and test against ray $t$
+    // range
+    p0t.z *= Sz;
+    p1t.z *= Sz;
+    p2t.z *= Sz;
+    Float tScaled = e0 * p0t.z + e1 * p1t.z + e2 * p2t.z;
+    if (det < 0 && (tScaled >= 0 || tScaled < rayToObject.tMax * det))
+        return false;
+    else if (det > 0 && (tScaled <= 0 || tScaled > rayToObject.tMax * det))
+        return false;
+
+    // Compute barycentric coordinates and $t$ value for triangle
+    // intersection
+    Float invDet = 1 / det;
+    Float b0 = e0 * invDet;
+    Float b1 = e1 * invDet;
+    Float b2 = e2 * invDet;
+    Float t = tScaled * invDet;
+
+    // Ensure that computed triangle $t$ is conservatively greater than
+    // zero
+
+    // Compute $\delta_z$ term for triangle $t$ error bounds
+    Float maxZt = MaxComponent(Abs(Vector3f(p0t.z, p1t.z, p2t.z)));
+    Float deltaZ = gamma(3) * maxZt;
+
+    // Compute $\delta_x$ and $\delta_y$ terms for triangle $t$ error
+    // bounds
+    Float maxXt = MaxComponent(Abs(Vector3f(p0t.x, p1t.x, p2t.x)));
+    Float maxYt = MaxComponent(Abs(Vector3f(p0t.y, p1t.y, p2t.y)));
+    Float deltaX = gamma(5) * (maxXt + maxZt);
+    Float deltaY = gamma(5) * (maxYt + maxZt);
+
+    // Compute $\delta_e$ term for triangle $t$ error bounds
+    Float deltaE =
+        2 * (gamma(2) * maxXt * maxYt + deltaY * maxXt + deltaX * maxYt);
+
+    // Compute $\delta_t$ term for triangle $t$ error bounds and check
+    // _t_
+    Float maxE = MaxComponent(Abs(Vector3f(e0, e1, e2)));
+    Float deltaT = 3 *
+                   (gamma(3) * maxE * maxZt + deltaE * maxZt + deltaZ * maxE) *
+                   std::abs(invDet);
+    if (t <= deltaT) return false;
+
+    // Compute triangle partial derivatives
+    Vector3f dpdu, dpdv;
+
+    // Compute deltas for triangle partial derivatives
+    Vector2f duv02 = uvs_[0] - uvs_[2], duv12 = uvs_[1] - uvs_[2];
+    Vector3f dp02 = p0 - p2, dp12 = p1 - p2;
+    Float determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
+    bool degenerateUV = std::abs(determinant) < 1e-8;
+    if (!degenerateUV) {
+        Float invdet = 1 / determinant;
+        dpdu = (duv12[1] * dp02 - duv02[1] * dp12) * invdet;
+        dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
+    }
+    if (degenerateUV || Cross(dpdu, dpdv).LengthSquared() == 0) {
+        // Handle zero determinant for triangle partial derivative
+        // matrix
+        Vector3f ng = Cross(p2 - p0, p1 - p0);
+        if (ng.LengthSquared() == 0)
+            // The triangle is actually degenerate; the intersection is
+            // bogus.
+            return false;
+
+        CoordinateSystem(Normalize(ng), &dpdu, &dpdv);
+    }
+
+    // Compute error bounds for triangle intersection
+    Float xAbsSum =
+        (std::abs(b0 * p0.x) + std::abs(b1 * p1.x) + std::abs(b2 * p2.x));
+    Float yAbsSum =
+        (std::abs(b0 * p0.y) + std::abs(b1 * p1.y) + std::abs(b2 * p2.y));
+    Float zAbsSum =
+        (std::abs(b0 * p0.z) + std::abs(b1 * p1.z) + std::abs(b2 * p2.z));
+    Vector3f pError = gamma(7) * Vector3f(xAbsSum, yAbsSum, zAbsSum);
+
+    // Interpolate $(u,v)$ parametric coordinates and hit point
+    Point3f pHit = b0 * p0 + b1 * p1 + b2 * p2;
+    Point2f uvHit = b0 * uvs_[0] + b1 * uvs_[1] + b2 * uvs_[2];
+    Normal3f normalInterpolated = b0 * n0 + b1 * n1 + b2 * n2;
+
+    // Fill in _SurfaceInteraction_ from triangle hit
+    if (isect != nullptr) {
+        *isect = (*ObjectToWorld)(SurfaceInteraction(
+            pHit, pError, uvHit, -rayToObject.d, dpdu, dpdv, Normal3f(0, 0, 0),
+            Normal3f(0, 0, 0), rayToObject.time, this, index));
+        isect->n = isect->shading.n = (*ObjectToWorld)(normalInterpolated);
+    }
+    if (tHit != nullptr) {
+        *tHit = t;
+    }
+    return true;
 }
 
 Float HeightField2::Area() const {

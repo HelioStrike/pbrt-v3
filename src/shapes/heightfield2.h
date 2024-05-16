@@ -19,6 +19,8 @@ class HeightField2 : public Shape {
     Interaction Sample(const Point2f &u, Float *pdf) const;
 
   private:
+    bool IntersectWithTriangle(int index, Ray rayToObject, Float *tHit,
+                               SurfaceInteraction *isect) const;
     int posToVoxel(const Point3f &P, int axis) const {
         int v = int((P[axis] - bounds_.pMin[axis]) * invWidth[axis]);
         return Clamp(v, 0, nVoxels[axis] - 1);
@@ -30,6 +32,7 @@ class HeightField2 : public Shape {
     int nx_, ny_, ntris_, nverts_;
     int nVoxels[3];
     int *verts_;
+    // Width per voxel.
     Float width[3] = {1, 1, 1}, invWidth[3] = {1, 1, 1};
     Float zMin = 10000000, zMax = -10000000;
     const Float *z_;
