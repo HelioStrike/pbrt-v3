@@ -40,7 +40,6 @@ class HeightField2 : public Shape {
     std::unique_ptr<Point3f[]> P_;
     std::unique_ptr<Normal3f[]> FN_;
     std::unique_ptr<Normal3f[]> PN_;
-    std::unique_ptr<int[]> PN_div_;
     std::unique_ptr<Point2f[]> uvs_;
     Bounds3f bounds_;
 };

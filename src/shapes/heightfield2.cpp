@@ -24,7 +24,6 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
       P_(std::unique_ptr<Point3f[]>(new Point3f[nx * ny])),
       FN_(std::unique_ptr<Normal3f[]>(new Normal3f[ntris_])),
       PN_(std::unique_ptr<Normal3f[]>(new Normal3f[nx * ny])),
-      PN_div_(std::unique_ptr<int[]>(new int[nx * ny])),
       uvs_(std::unique_ptr<Point2f[]>(new Point2f[nx * ny])) {
     // Compute heightfield2 vertex positions
     int pos = 0;
@@ -53,8 +52,6 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
             PN_[VERT(x, y)] += FN_[pos];
             PN_[VERT(x + 1, y)] += FN_[pos];
             PN_[VERT(x + 1, y + 1)] += FN_[pos];
-            PN_div_[VERT(x, y)]++, PN_div_[VERT(x + 1, y)]++,
-                PN_div_[VERT(x + 1, y + 1)]++;
             pos++;
 
             indices_[3 * pos] = VERT(x, y);
@@ -66,8 +63,6 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
             PN_[VERT(x, y)] += FN_[pos];
             PN_[VERT(x + 1, y + 1)] += FN_[pos];
             PN_[VERT(x, y + 1)] += FN_[pos];
-            PN_div_[VERT(x, y)]++, PN_div_[VERT(x, y + 1)]++,
-                PN_div_[VERT(x + 1, y + 1)]++;
             pos++;
         }
 #undef VERT
@@ -76,7 +71,7 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
     pos = 0;
     for (int y = 0; y < ny; ++y) {
         for (int x = 0; x < nx; ++x) {
-            PN_[pos] /= PN_div_[pos];
+            PN_[pos] = Normalize(PN_[pos]);
             ++pos;
         }
     }
@@ -120,7 +115,6 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
     // Set up 3D DDA for ray
     float NextCrossingT[3], DeltaT[3];
     int Step[3], Out[3], Pos[3];
-    int nVoxels[3] = {nx_, ny_, 1};
     for (int axis = 0; axis < 3; ++axis) {
         if (rayToObject.d[axis] == -0.f) rayToObject.d[axis] = 0.f;
         // Compute current voxel for axis
