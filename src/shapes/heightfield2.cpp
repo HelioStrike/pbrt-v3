@@ -84,6 +84,8 @@ HeightField2::HeightField2(const Transform *ObjectToWorld,
         width[axis] = (axis == 2 ? zMax - zMin : 1.f) / nVoxels[axis];
         invWidth[axis] = 1.f / width[axis];
     }
+
+    bounds_ = ObjectBound();
 }
 
 Bounds3f HeightField2::ObjectBound() const {
@@ -103,6 +105,13 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
                              SurfaceInteraction *isect,
                              bool testAlphaTexture) const {
     auto rayToObject = (*WorldToObject)(ray);
+
+    // for (int i = 0; i < (nx_ - 1) * (ny_ - 1) * 2; ++i) {
+    //     bool intersects = IntersectWithTriangle(i, rayToObject, tHit, isect);
+    //     if (intersects) return true;
+    // }
+
+    // return false;
 
     float rayT;
     if (Inside(rayToObject(0), bounds_))
@@ -124,7 +133,7 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
             NextCrossingT[axis] =
                 rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) /
                            rayToObject.d[axis];
-            DeltaT[axis] = 1 / rayToObject.d[axis];
+            DeltaT[axis] = width[axis] / rayToObject.d[axis];
             Step[axis] = 1;
             Out[axis] = nVoxels[axis];
         } else {
@@ -154,7 +163,7 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
                    ((NextCrossingT[1] < NextCrossingT[2]));
         const int cmpToAxis[8] = {2, 1, 2, 1, 2, 2, 0, 0};
         int stepAxis = cmpToAxis[bits];
-        if (ray.tMax < NextCrossingT[stepAxis]) break;
+        if (rayToObject.tMax < NextCrossingT[stepAxis]) break;
         Pos[stepAxis] += Step[stepAxis];
         if (Pos[stepAxis] == Out[stepAxis]) break;
         NextCrossingT[stepAxis] += DeltaT[stepAxis];
