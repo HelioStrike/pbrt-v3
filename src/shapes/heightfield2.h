@@ -2,6 +2,7 @@
 #define PBRT_SHAPES_HEIGHTFIELD2_H
 
 // shapes/heightfield2.h*
+#include "pbrt.h"
 #include "shape.h"
 
 namespace pbrt {
@@ -27,6 +28,9 @@ class HeightField2 : public Shape {
     }
     float voxelToPos(int p, int axis) const {
         return bounds_.pMin[axis] + p * width[axis];
+    }
+    inline int offset(int x, int y, int z) const {
+        return z * nVoxels[0] * nVoxels[1] + y * nVoxels[0] + x;
     }
 
     int nx_, ny_, ntris_, nverts_;

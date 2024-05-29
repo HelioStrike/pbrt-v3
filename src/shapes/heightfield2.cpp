@@ -150,10 +150,11 @@ bool HeightField2::Intersect(const Ray &ray, Float *tHit,
     // Walk ray through voxel grid
     bool hitSomething = false;
     for (;;) {
-        int triangle_index = Pos[0] + (ny_ - 1) * Pos[1];
-        hitSomething |=
-            IntersectWithTriangle(triangle_index, rayToObject, tHit, isect) ||
-            IntersectWithTriangle(triangle_index + 1, rayToObject, tHit, isect);
+        int triangle_index = offset(Pos[0], Pos[1], Pos[2]);
+        hitSomething |= IntersectWithTriangle(2 * triangle_index, rayToObject,
+                                              tHit, isect) ||
+                        IntersectWithTriangle(2 * triangle_index + 1,
+                                              rayToObject, tHit, isect);
 
         // Advance to next voxel
 
