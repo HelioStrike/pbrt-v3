@@ -39,9 +39,10 @@
 #define PBRT_CAMERAS_REALISTIC_H
 
 // cameras/realistic.h*
-#include "pbrt.h"
 #include "camera.h"
 #include "film.h"
+#include "paramset.h"
+#include "pbrt.h"
 
 namespace pbrt {
 
