@@ -95,9 +95,9 @@ class RealisticCameraWithoutApproximation : public Camera {
     Point3f SampleExitPupil(const Point2f &pFilm, const Point2f &lensSample,
                             Float *sampleBoundsArea) const {
         Float rFilm = std::sqrt(pFilm.x * pFilm.x + pFilm.y * pFilm.y);
-        int rIndex = rFilm / (film->diagonal / 2) * exitPupilBounds.size();
-        rIndex = std::min((int)exitPupilBounds.size() - 1, rIndex);
-        Bounds2f pupilBounds = exitPupilBounds[rIndex];
+        int rIndex = rFilm / (film->diagonal / 2) * exit_pupil_bounds_.size();
+        rIndex = std::min((int)exit_pupil_bounds_.size() - 1, rIndex);
+        Bounds2f pupilBounds = exit_pupil_bounds_[rIndex];
         if (sampleBoundsArea) *sampleBoundsArea = pupilBounds.Area();
 
         Point2f pLens = pupilBounds.Lerp(lensSample);
@@ -110,7 +110,7 @@ class RealisticCameraWithoutApproximation : public Camera {
 
     Float film_distance_;
     std::vector<LensElement> lens_elements_;
-    std::vector<Bounds2f> exitPupilBounds;
+    std::vector<Bounds2f> exit_pupil_bounds_;
 };
 
 RealisticCameraWithoutApproximation *CreateRealisticCameraWithoutApproximation(

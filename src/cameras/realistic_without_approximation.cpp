@@ -10,10 +10,6 @@
 
 namespace pbrt {
 
-int compareByPosition(const LensElement &a, const LensElement &b) {
-    return a.thickness > b.thickness;
-};
-
 RealisticCameraWithoutApproximation::RealisticCameraWithoutApproximation(
     const AnimatedTransform &cam2world, Film *film, const Medium *medium,
     Float shutter_open, Float shutter_close, Float film_distance,
@@ -23,12 +19,12 @@ RealisticCameraWithoutApproximation::RealisticCameraWithoutApproximation(
       film_distance_(film_distance),
       lens_elements_(lens_elements) {
     int nSamples = 64;
-    exitPupilBounds.resize(nSamples);
+    exit_pupil_bounds_.resize(nSamples);
     ParallelFor(
         [&](int i) {
             Float r0 = (Float)i / nSamples * film->diagonal / 2;
             Float r1 = (Float)(i + 1) / nSamples * film->diagonal / 2;
-            exitPupilBounds[i] = BoundExitPupil(r0, r1);
+            exit_pupil_bounds_[i] = BoundExitPupil(r0, r1);
         },
         nSamples);
 }
@@ -59,7 +55,7 @@ Float RealisticCameraWithoutApproximation::GenerateRay(
 
 bool RealisticCameraWithoutApproximation::TraceLensesFromFilm(
     const Ray &rCamera, Ray *rOut) const {
-    Float elementZ = 0;
+    Float elementZ = LensFrontZ();
 
     static const Transform CameraToLens = Scale(1, 1, -1);
     Ray rLens = CameraToLens(rCamera);
