@@ -34,7 +34,7 @@ Float RealisticCameraWithoutApproximation::GenerateRay(
     Point2f s(sample.pFilm.x / film->fullResolution.x,
               sample.pFilm.y / film->fullResolution.y);
     Point2f pFilm2 = film->GetPhysicalExtent().Lerp(s);
-    Point3f pFilm(-pFilm2.x, pFilm2.y, 0);
+    Point3f pFilm(-pFilm2.x, pFilm2.y, LensFrontZ());
 
     Float exitPupilBoundsArea;
     Point3f pRear = SampleExitPupil(Point2f(pFilm.x, pFilm.y), sample.pLens,
@@ -55,18 +55,18 @@ Float RealisticCameraWithoutApproximation::GenerateRay(
 
 bool RealisticCameraWithoutApproximation::TraceLensesFromFilm(
     const Ray &rCamera, Ray *rOut) const {
-    Float elementZ = LensFrontZ();
+    Float elementZ = 0;
 
     static const Transform CameraToLens = Scale(1, 1, -1);
     Ray rLens = CameraToLens(rCamera);
 
     for (int i = lens_elements_.size() - 1; i >= 0; i--) {
         const LensElement &element = lens_elements_[i];
-        elementZ -= lens_elements_[i].thickness;
+        elementZ -= element.thickness;
 
         Float t;
         Normal3f n;
-        bool isStop = (lens_elements_[i].radius == 0);
+        bool isStop = (element.radius == 0);
         if (isStop) {
             t = (elementZ - rLens.o.z) / rLens.d.z;
         } else {
@@ -75,7 +75,6 @@ bool RealisticCameraWithoutApproximation::TraceLensesFromFilm(
             if (!IntersectSphericalElement(radius, zCenter, rLens, &t, &n))
                 return false;
         }
-
         Point3f pHit = rLens(t);
         float r2 = pHit.x * pHit.x + pHit.y * pHit.y;
         if (r2 > element.aperture * element.aperture) return false;
